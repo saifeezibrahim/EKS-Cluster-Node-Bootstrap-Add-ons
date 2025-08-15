@@ -1,0 +1,6 @@
+sysctl_overrides:
+  net.netfilter.nf_conntrack_max: 262144
+  net.core.somaxconn: 1024
+journald_max_use: "1G"
+containerd_registry_mirrors: []
+enterprise_ca_bundle_path: ""
