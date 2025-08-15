@@ -1,0 +1,52 @@
+- name: Apply sysctl tuning
+  ansible.builtin.sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    state: present
+    sysctl_set: true
+    reload: true
+  loop: "{{ sysctl_overrides | dict2items }}"
+
+- name: Configure journald limits
+  ansible.builtin.copy:
+    dest: /etc/systemd/journald.conf.d/size.conf
+    content: |
+      [Journal]
+      SystemMaxUse={{ journald_max_use }}
+  notify: restart journald
+
+- name: Configure containerd registry mirrors (optional)
+  when: containerd_registry_mirrors | length > 0
+  ansible.builtin.blockinfile:
+    path: /etc/containerd/config.toml
+    marker: "# {mark} ANSIBLE MANAGED REGISTRY MIRRORS"
+    block: |
+      [plugins."io.containerd.grpc.v1.cri".registry.mirrors]
+      {% for mirror in containerd_registry_mirrors %}
+      [plugins."io.containerd.grpc.v1.cri".registry.mirrors."{{ mirror.server }}"]
+        endpoint = {{ mirror.endpoints | to_json }}
+      {% endfor %}
+  notify: restart containerd
+
+- name: Install enterprise CA bundle if provided
+  when: enterprise_ca_bundle_path | length > 0
+  ansible.builtin.copy:
+    src: "{{ enterprise_ca_bundle_path }}"
+    dest: /usr/local/share/ca-certificates/enterprise-ca.crt
+    mode: "0644"
+  notify:
+    - update ca certs
+
+handlers:
+  - name: restart journald
+    ansible.builtin.systemd:
+      name: systemd-journald
+      state: restarted
+
+  - name: restart containerd
+    ansible.builtin.systemd:
+      name: containerd
+      state: restarted
+
+  - name: update ca certs
+    ansible.builtin.command: update-ca-certificates
