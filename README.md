@@ -1,38 +1,90 @@
-# EKS Platform Stack (Terraform + Helm + optional Ansible)
+# terraform-ansible-multi-env
 
-Provision an AWS EKS cluster with Terraform, install core add-ons via Helm, and optionally apply node baseline via Ansible.
+![Terraform](https://img.shields.io/badge/Terraform-HCL-blue?logo=terraform)
+![Ansible](https://img.shields.io/badge/Ansible-Automation-yellow?logo=ansible)
 
-## Prereqs
-- Terraform >= 1.5
-- AWS CLI v2
-- kubectl, helm
-- Ansible >= 2.14 (optional)
-- Remote state S3 bucket + DynamoDB table created
+## Overview
 
-## Quickstart (dev)
-make tf-init ENV=dev
-make tf-plan ENV=dev
-make tf-apply ENV=dev
-aws eks update-kubeconfig --name dev-eks --region ap-south-1 --alias dev-eks
-kubectl get nodes -o wide
+**terraform-ansible-multi-env** is a public repository designed to streamline infrastructure provisioning and configuration management using both [Terraform](https://www.terraform.io/) and [Ansible](https://www.ansible.com/). It provides a modular approach to managing multiple environments (e.g., dev, staging, prod) efficiently.
 
-Optional Ansible node bootstrap:
-make ansible-check ENV=dev
-make ansible-apply ENV=dev
+## Features
 
-## Notes
-- IRSA is used for controllers (no static cloud keys).
-- Keep business workloads out of Terraform; use GitOps for apps.
+- **Multi-Environment Support**: Easily manage and switch between different infrastructure environments.
+- **Infrastructure as Code**: Define cloud resources using Terraform modules.
+- **Configuration Management**: Automate software installation and configuration with Ansible playbooks.
+- **Modular Structure**: Easily extend and customize modules for your needs.
+- **Open Source**: Free to use, modify, and contribute.
 
-## How to use
-	•	Initialize and plan:
-	•	make tf-init ENV=dev
-	•	make tf-plan ENV=dev
-	•	make tf-apply ENV=dev
-	•	make kubeconfig ENV=dev
-	•	Validate cluster:
-	•	kubectl get nodes -A
-	•	Install add-ons happen as part of Terraform apply.
-	•	Optional Ansible:
-	•	make ansible-check ENV=dev
-	•	make ansible-apply ENV=dev
+## Getting Started
+
+### Prerequisites
+
+- [Terraform](https://www.terraform.io/downloads.html) installed locally
+- [Ansible](https://docs.ansible.com/ansible/latest/installation_guide/intro_installation.html) installed locally
+- Access to your cloud provider (e.g., AWS, Azure, GCP)
+- SSH access configured for Ansible remote management
+
+### Clone the Repository
+
+```bash
+git clone https://github.com/saifeezibrahim/terraform-ansible-multi-env.git
+cd terraform-ansible-multi-env
+```
+
+### Usage
+
+1. **Configure Environment Variables**
+
+   Set up your environment variables for authentication and configuration in `.env` files or via your shell.
+
+2. **Terraform: Provision Infrastructure**
+
+   ```bash
+   cd terraform/
+   terraform init
+   terraform plan -var-file=env/dev.tfvars
+   terraform apply -var-file=env/dev.tfvars
+   ```
+
+3. **Ansible: Configure Servers**
+
+   ```bash
+   cd ansible/
+   ansible-playbook -i inventories/dev/hosts playbook.yml
+   ```
+
+### Directory Structure
+
+```
+terraform-ansible-multi-env/
+├── ansible/
+│   ├── inventories/
+│   └── playbook.yml
+├── terraform/
+│   ├── modules/
+│   ├── env/
+│   └── main.tf
+└── README.md
+```
+
+## Customization
+
+- Add more Terraform modules for new resource types.
+- Extend Ansible playbooks for your application stack.
+- Create new environment variable files in `terraform/env/`.
+
+## Contributing
+
+Contributions are welcome! Please open issues or submit pull requests for improvements.
+
+## License
+
+This repository currently does not specify a license. Please add a license file for open source compliance.
+
+## Author
+
+- [saifeezibrahim](https://github.com/saifeezibrahim)
+
+---
+
+*This repository is actively maintained. For questions or support, open an issue or contact the author via GitHub.*
