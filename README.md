@@ -23,3 +23,16 @@ make ansible-apply ENV=dev
 ## Notes
 - IRSA is used for controllers (no static cloud keys).
 - Keep business workloads out of Terraform; use GitOps for apps.
+
+## How to use
+	•	Initialize and plan:
+	•	make tf-init ENV=dev
+	•	make tf-plan ENV=dev
+	•	make tf-apply ENV=dev
+	•	make kubeconfig ENV=dev
+	•	Validate cluster:
+	•	kubectl get nodes -A
+	•	Install add-ons happen as part of Terraform apply.
+	•	Optional Ansible:
+	•	make ansible-check ENV=dev
+	•	make ansible-apply ENV=dev
