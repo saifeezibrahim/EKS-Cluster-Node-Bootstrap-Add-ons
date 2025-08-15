@@ -1,0 +1,64 @@
+name: Terraform
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+env:
+  TF_IN_AUTOMATION: true
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: 1.7.5 }
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/github-actions-oidc
+          aws-region: ap-south-1
+      - name: Terraform Init
+        run: terraform -chdir=terraform init -input=false
+      - name: Terraform Workspace
+        run: terraform -chdir=terraform workspace select dev || terraform -chdir=terraform workspace new dev
+      - name: Terraform Plan
+        run: terraform -chdir=terraform plan -var-file=terraform/envs/dev/terraform.tfvars -no-color -out=terraform/tfplan-dev.bin
+      - name: Upload Plan
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-dev
+          path: terraform/tfplan-dev.bin
+
+  apply:
+    needs: plan
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: prod
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: 1.7.5 }
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/github-actions-oidc
+          aws-region: ap-south-1
+      - name: Terraform Init
+        run: terraform -chdir=terraform init -input=false
+      - name: Terraform Workspace
+        run: terraform -chdir=terraform workspace select dev || terraform -chdir=terraform workspace new dev
+      - name: Download Plan
+        uses: actions/download-artifact@v4
+        with:
+          name: tfplan-dev
+          path: terraform
+      - name: Terraform Apply
+        run: terraform -chdir=terraform apply -auto-approve terraform/tfplan-dev.bin
