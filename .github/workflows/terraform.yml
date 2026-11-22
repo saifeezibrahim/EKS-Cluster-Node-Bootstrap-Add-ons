@@ -1,0 +1,62 @@
+name: Terraform
+
+on:
+  pull_request:
+    paths: ["terraform/**", ".github/workflows/terraform.yml"]
+  push:
+    branches: ["main"]
+    paths: ["terraform/**", ".github/workflows/terraform.yml"]
+  workflow_dispatch:
+    inputs:
+      env:
+        description: "Environment to plan"
+        type: choice
+        options: [dev, stage, prod]
+        default: dev
+
+env:
+  TF_IN_AUTOMATION: "true"
+  TF_VERSION: "1.9.8"
+
+jobs:
+  validate:
+    name: fmt + validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - name: terraform fmt
+        run: terraform -chdir=terraform fmt -check -recursive
+      - name: terraform init (no backend)
+        run: terraform -chdir=terraform init -backend=false -input=false
+      - name: terraform validate
+        run: terraform -chdir=terraform validate
+
+  plan:
+    name: plan (${{ inputs.env || 'dev' }})
+    needs: validate
+    # Runs only when an AWS role for GitHub OIDC is configured as a repository variable.
+    if: vars.AWS_ROLE_ARN != ''
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      ENV: ${{ inputs.env || 'dev' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ap-south-1
+      - name: terraform init
+        run: terraform -chdir=terraform init -input=false
+      - name: select workspace
+        run: terraform -chdir=terraform workspace select "$ENV" || terraform -chdir=terraform workspace new "$ENV"
+      - name: terraform plan
+        run: terraform -chdir=terraform plan -input=false -no-color -var-file="envs/$ENV/terraform.tfvars"

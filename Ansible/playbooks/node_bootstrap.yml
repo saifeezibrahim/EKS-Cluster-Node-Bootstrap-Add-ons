@@ -1,6 +1,0 @@
-- name: EKS node bootstrap baseline
-  hosts: all
-  become: true
-  gather_facts: true
-  roles:
-    - node_baseline

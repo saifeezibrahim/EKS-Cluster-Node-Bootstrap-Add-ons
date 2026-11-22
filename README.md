@@ -1,90 +1,76 @@
-# terraform-ansible-multi-env
+# EKS cluster with node bootstrap and add-ons
 
-![Terraform](https://img.shields.io/badge/Terraform-HCL-blue?logo=terraform)
-![Ansible](https://img.shields.io/badge/Ansible-Automation-yellow?logo=ansible)
+![Terraform](https://img.shields.io/badge/Terraform-844FBA?logo=terraform&logoColor=white)
+![AWS EKS](https://img.shields.io/badge/AWS_EKS-FF9900?logo=amazoneks&logoColor=white)
+![Helm](https://img.shields.io/badge/Helm-0F1689?logo=helm&logoColor=white)
+![Ansible](https://img.shields.io/badge/Ansible-EE0000?logo=ansible&logoColor=white)
 
-## Overview
+Terraform builds an Amazon EKS cluster and its VPC, then installs core add-ons with Helm using **IAM Roles for Service Accounts (IRSA)**. Ansible applies an OS baseline to the worker nodes. GitHub Actions checks formatting and validates every change, and can run `terraform plan` through **GitHub OIDC**, so no AWS access keys are stored in GitHub.
 
-**terraform-ansible-multi-env** is a public repository designed to streamline infrastructure provisioning and configuration management using both [Terraform](https://www.terraform.io/) and [Ansible](https://www.ansible.com/). It provides a modular approach to managing multiple environments (e.g., dev, staging, prod) efficiently.
+This is a personal reference project, not code from an employer.
 
-## Features
+## Architecture
 
-- **Multi-Environment Support**: Easily manage and switch between different infrastructure environments.
-- **Infrastructure as Code**: Define cloud resources using Terraform modules.
-- **Configuration Management**: Automate software installation and configuration with Ansible playbooks.
-- **Modular Structure**: Easily extend and customize modules for your needs.
-- **Open Source**: Free to use, modify, and contribute.
+```
+                    ┌──────────────────────── VPC (3 AZs) ─────────────────────────┐
+  GitHub Actions    │  public subnets: NAT gateway, internet-facing ALBs           │
+  (OIDC role) ──────┼─▶ EKS control plane (private endpoint, optional public CIDRs) │
+                    │  private subnets: managed node group (AL2023)                 │
+                    │     kube-system: aws-load-balancer-controller  (IRSA)         │
+                    │                  cluster-autoscaler            (IRSA)         │
+                    │                  metrics-server                               │
+                    └───────────────────────────────────────────────────────────────┘
+  Ansible (via bastion/VPN) ──▶ worker nodes: sysctl, journald, containerd mirrors, CA bundle
+```
 
-## Getting Started
+## Repository layout
 
-### Prerequisites
+| Path | Purpose |
+|---|---|
+| `terraform/vpc.tf` | VPC with public/private subnets, single NAT gateway, subnet tags for load balancers |
+| `terraform/eks.tf` | EKS cluster and managed node groups (`terraform-aws-modules/eks` v20) |
+| `terraform/addons.tf` | IRSA roles and Helm releases: AWS Load Balancer Controller, Cluster Autoscaler, metrics-server |
+| `terraform/envs/{dev,stage,prod}/terraform.tfvars` | Per-environment sizing and CIDRs |
+| `terraform/version.tf` | Provider versions and S3 + DynamoDB remote state |
+| `ansible/inventories/<env>/aws_ec2.yml` | Dynamic inventory: finds running nodes by cluster tag |
+| `ansible/roles/node_baseline` | sysctl tuning, journald limits, optional registry mirrors and enterprise CA |
+| `.github/workflows/terraform.yml` | `fmt -check` + `validate` on every PR; `plan` when an OIDC role is configured |
+| `Makefile` | Short commands for the steps below |
 
-- [Terraform](https://www.terraform.io/downloads.html) installed locally
-- [Ansible](https://docs.ansible.com/ansible/latest/installation_guide/intro_installation.html) installed locally
-- Access to your cloud provider (e.g., AWS, Azure, GCP)
-- SSH access configured for Ansible remote management
+## Prerequisites
 
-### Clone the Repository
+- Terraform >= 1.5, AWS CLI, kubectl, Ansible with `make ansible-deps`
+- An S3 bucket and DynamoDB table for state: replace `ORG-tf-state` / `ORG-tf-locks` in `terraform/version.tf`
+- Network access to the cluster API. The endpoint is **private by default**, so either run Terraform from inside the VPC, or set `endpoint_public_access_cidrs = ["<your-ip>/32"]` in the tfvars.
+
+## Usage
 
 ```bash
-git clone https://github.com/saifeezibrahim/terraform-ansible-multi-env.git
-cd terraform-ansible-multi-env
+make tf-validate              # offline checks, no AWS needed
+make tf-init
+make tf-plan ENV=dev          # selects/creates the "dev" workspace
+make tf-apply ENV=dev
+make kubeconfig ENV=dev
+kubectl get nodes
+
+make ansible-deps
+make ansible-check ENV=dev    # dry run with diff
+make ansible-apply ENV=dev
+
+make tf-destroy ENV=dev       # tear down to stop NAT and node costs
 ```
 
-### Usage
+To enable `plan` in CI, create an IAM role that trusts GitHub's OIDC provider for this repository and save its ARN as the repository variable `AWS_ROLE_ARN`.
 
-1. **Configure Environment Variables**
+## Design choices
 
-   Set up your environment variables for authentication and configuration in `.env` files or via your shell.
+- **IRSA, not node IAM roles.** Each add-on's service account gets its own IAM role with only the policy it needs, so a compromised pod can't use the node's permissions.
+- **One codebase, per-environment tfvars and workspaces.** dev, stage and prod differ only in size and CIDRs.
+- **Private API endpoint by default.** Public access is opt-in and limited to listed CIDRs.
+- **No automatic apply from CI.** Plans run in CI; applies are run deliberately by a person.
 
-2. **Terraform: Provision Infrastructure**
+## Known limitations and next steps
 
-   ```bash
-   cd terraform/
-   terraform init
-   terraform plan -var-file=env/dev.tfvars
-   terraform apply -var-file=env/dev.tfvars
-   ```
-
-3. **Ansible: Configure Servers**
-
-   ```bash
-   cd ansible/
-   ansible-playbook -i inventories/dev/hosts playbook.yml
-   ```
-
-### Directory Structure
-
-```
-terraform-ansible-multi-env/
-├── ansible/
-│   ├── inventories/
-│   └── playbook.yml
-├── terraform/
-│   ├── modules/
-│   ├── env/
-│   └── main.tf
-└── README.md
-```
-
-## Customization
-
-- Add more Terraform modules for new resource types.
-- Extend Ansible playbooks for your application stack.
-- Create new environment variable files in `terraform/env/`.
-
-## Contributing
-
-Contributions are welcome! Please open issues or submit pull requests for improvements.
-
-## License
-
-This repository currently does not specify a license. Please add a license file for open source compliance.
-
-## Author
-
-- [saifeezibrahim](https://github.com/saifeezibrahim)
-
----
-
-*This repository is actively maintained. For questions or support, open an issue or contact the author via GitHub.*
+- Single NAT gateway keeps dev cheap but is a single point of failure; use one per AZ for prod.
+- Ansible reaches nodes over SSH on private IPs, which needs a bastion or VPN. AWS SSM would remove that need.
+- Next: Trivy/tfsec config scanning in CI, Karpenter as an alternative to Cluster Autoscaler, cost tags per environment.
